@@ -8,12 +8,14 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "logo.clearbit.com" },
     ],
   },
+  turbopack: {},
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.externals = [...(config.externals || []), '@sparticuz/chromium'];
     }
     return config;
   },
+  serverExternalPackages: ['@sparticuz/chromium', 'puppeteer-core'],
 };
 
 export default nextConfig;
