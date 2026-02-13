@@ -30,9 +30,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (isProduction) {
       // Use remote Chromium binary for production (Vercel)
-      // This URL points to the official @sparticuz/chromium release
+      // This URL points to the official @sparticuz/chromium release (x64 architecture)
       executablePath = await chromium.executablePath(
-        'https://github.com/Sparticuz/chromium/releases/download/v143.0.4/chromium-v143.0.4-pack.tar'
+        'https://github.com/Sparticuz/chromium/releases/download/v143.0.4/chromium-v143.0.4-pack.x64.tar'
       );
     } else {
       // For local development, try to use the local binary
