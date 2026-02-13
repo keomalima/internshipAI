@@ -11,11 +11,11 @@ const nextConfig: NextConfig = {
   turbopack: {},
   webpack: (config, { isServer }) => {
     if (isServer) {
-      config.externals = [...(config.externals || []), '@sparticuz/chromium'];
+      config.externals = [...(config.externals || []), '@sparticuz/chromium-min'];
     }
     return config;
   },
-  serverExternalPackages: ['@sparticuz/chromium', 'puppeteer-core'],
+  serverExternalPackages: ['@sparticuz/chromium-min', 'puppeteer-core'],
 };
 
 export default nextConfig;
