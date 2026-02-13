@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { chromium } from "playwright";
+import chromium from "@sparticuz/chromium";
+import puppeteer from "puppeteer-core";
 
 export const config = {
   api: {
@@ -20,10 +21,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: "Missing HTML content" });
     }
 
-    const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
-    const page = await browser.newPage({
-      viewport: { width: 794, height: 1123 }, // approx A4 at 96dpi
+    const executablePath = (await chromium.executablePath()) || (await puppeteer.executablePath());
+    const browser = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: { width: 794, height: 1123 },
+      executablePath,
+      headless: chromium.headless,
     });
+    const page = await browser.newPage();
 
     const wrappedHtml = `
       <!doctype html>
@@ -44,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       </html>
     `;
 
-    await page.setContent(wrappedHtml, { waitUntil: "networkidle" });
+    await page.setContent(wrappedHtml, { waitUntil: "networkidle0" });
 
     const pdfBuffer = await page.pdf({
       format: "A4",
