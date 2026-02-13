@@ -5,8 +5,8 @@ import puppeteer from "puppeteer-core";
 export const config = {
   api: {
     bodyParser: { sizeLimit: "1mb" },
-    runtime: "nodejs20.x",
   },
+  maxDuration: 60,
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -23,14 +23,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Configure chromium for Vercel serverless environment
-    chromium.setHeadlessMode = true;
-    chromium.setGraphicsMode = false;
-
+    const executablePath = await chromium.executablePath();
+    
     const browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      args: [
+        ...chromium.args,
+        '--disable-software-rasterizer',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-sandbox',
+        '--single-process',
+      ],
+      defaultViewport: { width: 1920, height: 1080 },
+      executablePath,
+      headless: true,
     });
     const page = await browser.newPage();
 
@@ -71,6 +77,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).send(pdfBuffer);
   } catch (error) {
     console.error("PDF generation error:", error);
-    return res.status(500).json({ error: "Failed to generate PDF" });
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorStack = error instanceof Error ? error.stack : "";
+    console.error("Error details:", { message: errorMessage, stack: errorStack });
+    return res.status(500).json({ 
+      error: "Failed to generate PDF",
+      details: process.env.NODE_ENV === "development" ? errorMessage : undefined
+    });
   }
 }
