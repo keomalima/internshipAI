@@ -22,16 +22,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: "Missing HTML content" });
     }
 
-    // Configure chromium for Vercel serverless environment
-    // Set graphics mode to false for serverless
-    chromium.setGraphicsMode = false;
+    // For Vercel deployment, use remote Chromium binary to avoid bundling issues
+    // The local chromium-min package binaries don't get included in Vercel's deployment
+    const isProduction = process.env.NODE_ENV === 'production';
 
-    // Get the executable path - no parameters needed, library handles it automatically
-    const executablePath = await chromium.executablePath();
+    let executablePath: string;
+
+    if (isProduction) {
+      // Use remote Chromium binary for production (Vercel)
+      // This URL points to the official @sparticuz/chromium release
+      executablePath = await chromium.executablePath(
+        'https://github.com/Sparticuz/chromium/releases/download/v143.0.4/chromium-v143.0.4-pack.tar'
+      );
+    } else {
+      // For local development, try to use the local binary
+      executablePath = await chromium.executablePath();
+    }
 
     const browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: null, // Use null for serverless - better performance
+      args: isProduction
+        ? [...chromium.args, '--disable-gpu', '--single-process']
+        : chromium.args,
+      defaultViewport: null,
       executablePath,
       headless: true,
     });
