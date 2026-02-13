@@ -25,14 +25,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Configure chromium for Vercel serverless environment
     // Set graphics mode to false for serverless
     chromium.setGraphicsMode = false;
-    
-    const executablePath = await chromium.executablePath('/tmp/chromium');
-    
+
+    // Get the executable path - no parameters needed, library handles it automatically
+    const executablePath = await chromium.executablePath();
+
     const browser = await puppeteer.launch({
       args: chromium.args,
-      defaultViewport: { width: 1920, height: 1080 },
+      defaultViewport: chromium.defaultViewport,
       executablePath,
-      headless: true,
+      headless: chromium.headless,
     });
     const page = await browser.newPage();
 
@@ -76,7 +77,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     const errorStack = error instanceof Error ? error.stack : "";
     console.error("Error details:", { message: errorMessage, stack: errorStack });
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: "Failed to generate PDF",
       details: process.env.NODE_ENV === "development" ? errorMessage : undefined
     });
