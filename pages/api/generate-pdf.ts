@@ -31,9 +31,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const browser = await puppeteer.launch({
       args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
+      defaultViewport: null, // Use null for serverless - better performance
       executablePath,
-      headless: chromium.headless,
+      headless: true,
     });
     const page = await browser.newPage();
 
