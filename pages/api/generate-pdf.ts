@@ -6,7 +6,7 @@ export const config = {
   api: {
     bodyParser: { sizeLimit: "1mb" },
   },
-  maxDuration: 60,
+  maxDuration: 10,
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -23,17 +23,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Configure chromium for Vercel serverless environment
-    const executablePath = await chromium.executablePath();
+    // Set graphics mode to false for serverless
+    chromium.setGraphicsMode = false;
+    
+    const executablePath = await chromium.executablePath('/tmp/chromium');
     
     const browser = await puppeteer.launch({
-      args: [
-        ...chromium.args,
-        '--disable-software-rasterizer',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-sandbox',
-        '--single-process',
-      ],
+      args: chromium.args,
       defaultViewport: { width: 1920, height: 1080 },
       executablePath,
       headless: true,
