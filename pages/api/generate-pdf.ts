@@ -26,8 +26,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       args: chromium.args,
       defaultViewport: { width: 794, height: 1123 },
       executablePath,
-      // `chromium.headless` can be "new" in newer Puppeteer versions; clamp to boolean to satisfy typings
-      headless: chromium.headless !== false,
+      // Pass through "new" when provided; otherwise boolean
+      headless: typeof chromium.headless === "string" ? "new" : chromium.headless,
     });
     const page = await browser.newPage();
 
