@@ -1,10 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
+import path from "path";
 
 export const config = {
   api: {
     bodyParser: { sizeLimit: "1mb" },
+    runtime: "nodejs20.x",
   },
 };
 
@@ -21,16 +23,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: "Missing HTML content" });
     }
 
-    const isServerless = !!(process.env.VERCEL || process.env.AWS_EXECUTION_ENV);
-    // Use Sparticuz Chromium in serverless to avoid missing system libs (e.g., libnss3)
-    const executablePath = isServerless
-      ? await chromium.executablePath()
-      : await puppeteer.executablePath();
+    // Force Sparticuz bundled Chromium (brings its own shared libs)
+    const executablePath = await chromium.executablePath();
     if (!executablePath) {
       throw new Error("Could not resolve Chromium executable path");
     }
     const headless = chromium.headless === "new" ? true : chromium.headless ?? true;
-
     const browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: { width: 794, height: 1123 },
