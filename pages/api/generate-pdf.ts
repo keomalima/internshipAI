@@ -21,7 +21,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: "Missing HTML content" });
     }
 
-    const executablePath = (await chromium.executablePath()) || (await puppeteer.executablePath());
+    const isServerless = !!(process.env.VERCEL || process.env.AWS_EXECUTION_ENV);
+    // Use Sparticuz Chromium in serverless to avoid missing system libs (e.g., libnss3)
+    const executablePath = isServerless
+      ? await chromium.executablePath()
+      : await puppeteer.executablePath();
+    if (!executablePath) {
+      throw new Error("Could not resolve Chromium executable path");
+    }
     const headless = chromium.headless === "new" ? true : chromium.headless ?? true;
 
     const browser = await puppeteer.launch({
