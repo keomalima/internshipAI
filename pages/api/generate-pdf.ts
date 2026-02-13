@@ -22,12 +22,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const executablePath = (await chromium.executablePath()) || (await puppeteer.executablePath());
+    const headless = chromium.headless === "new" ? true : chromium.headless ?? true;
+
     const browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: { width: 794, height: 1123 },
       executablePath,
-      // Pass through "new" when provided; otherwise boolean
-      headless: typeof chromium.headless === "string" ? "new" : chromium.headless,
+      headless,
     });
     const page = await browser.newPage();
 
