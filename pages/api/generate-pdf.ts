@@ -36,8 +36,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       defaultViewport: { width: 794, height: 1123 },
       executablePath,
       headless,
-      // Provide chromium's recommended env to ensure bundled libs (e.g., libnss3) are found
-      env: { ...process.env, ...chromium.env },
     });
     const page = await browser.newPage();
 
