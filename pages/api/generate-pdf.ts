@@ -68,22 +68,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       </html>
     `;
 
-    await page.setContent(wrappedHtml, { waitUntil: "networkidle0" });
+    await page.setContent(wrappedHtml, {
+      waitUntil: "networkidle0",
+      timeout: 8000 // 8 second timeout to stay within Vercel's 10s limit
+    });
 
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
       margin: { top: "15mm", right: "15mm", bottom: "17mm", left: "15mm" },
+      preferCSSPageSize: false,
     });
 
     await browser.close();
 
+    // Validate the PDF buffer
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      throw new Error("Generated PDF buffer is empty");
+    }
+
+    console.log(`PDF generated successfully, size: ${pdfBuffer.length} bytes`);
+
     res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Length", pdfBuffer.length.toString());
     res.setHeader(
       "Content-Disposition",
       `attachment; filename=\"${fileName || "lettre_motivation.pdf"}\"`
     );
-    return res.status(200).send(pdfBuffer);
+
+    // Send the buffer directly
+    res.status(200).end(pdfBuffer, 'binary');
   } catch (error) {
     console.error("PDF generation error:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
