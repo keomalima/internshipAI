@@ -270,7 +270,12 @@ export default function ApplicationEditor({ application }: { application: Applic
         setIsGeneratingLetter(true);
         try {
             const base = data.job_description || `${data.role} chez ${data.company_name}`;
-            const userContext = refineHint || data.cover_letter_context || "";
+            // Combine both persistent context and temporary refinement instructions
+            const contextParts = [
+                data.cover_letter_context?.trim(),
+                refineHint?.trim()
+            ].filter(Boolean);
+            const userContext = contextParts.join("\n\n");
             const letter = await generateCoverLetter(base, aiProvider, undefined, userContext);
             setData(prev => ({ ...prev, cover_letter: letter }));
         } catch (error) {
@@ -286,7 +291,12 @@ export default function ApplicationEditor({ application }: { application: Applic
         setIsGeneratingEmail(true);
         try {
             const base = data.job_description || `${data.role} chez ${data.company_name}`;
-            const userNote = refineHint || data.cover_letter_context;
+            // Combine both persistent context and temporary refinement instructions
+            const contextParts = [
+                data.cover_letter_context?.trim(),
+                refineHint?.trim()
+            ].filter(Boolean);
+            const userNote = contextParts.join("\n\n");
             const emailText = await generateEmail(base, userNote, aiProvider);
             setData(prev => ({ ...prev, email_content: emailText }));
         } catch (error) {
