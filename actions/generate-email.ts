@@ -15,6 +15,7 @@ export async function generateEmail(
   const email = userProfile?.email?.trim();
   const phone = userProfile?.phone?.trim();
   const city = userProfile?.city?.trim() || "Lyon";
+  const bioPreferences = userProfile?.bio_preferences;
 
   if (!fullName || !email) {
     throw new Error("Complétez vos coordonnées dans Profil (nom + email au minimum).");
@@ -28,6 +29,7 @@ Rédige un email de candidature court et direct pour accompagner un CV et une le
 Contexte :
 - Offre : ${jobDescription}
 - Candidat : ${fullName}, ${city}
+${bioPreferences ? `- Parcours et objectifs : ${bioPreferences}` : ''}
 - Note du candidat : ${note}
 
 Structure :

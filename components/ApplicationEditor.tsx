@@ -223,34 +223,13 @@ const JobMetadataCard = ({
 export default function ApplicationEditor({ application }: { application: Application }) {
     const router = useRouter();
     const [data, setData] = useState<Application>(application);
-    const [metaLoading, setMetaLoading] = useState(false);
-    const [metaError, setMetaError] = useState<string | null>(null);
-    const [jobMeta, setJobMeta] = useState<JobMeta | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isGeneratingLetter, setIsGeneratingLetter] = useState(false);
     const [isGeneratingEmail, setIsGeneratingEmail] = useState(false);
     const [aiProvider, setAiProvider] = useState<"auto" | "gemini" | "openai">("auto");
     const [refineHint, setRefineHint] = useState<string>("");
 
-    useEffect(() => {
-        const fetchMeta = async () => {
-            if (!data.job_url) return;
-            setMetaLoading(true);
-            setMetaError(null);
-            try {
-                const res = await fetch(`/api/job-metadata?url=${encodeURIComponent(data.job_url)}`);
-                if (!res.ok) throw new Error("metadata fetch failed");
-                const json = await res.json();
-                setJobMeta(json);
-            } catch (err) {
-                console.error(err);
-                setMetaError("Impossible de récupérer les infos de l'offre.");
-            } finally {
-                setMetaLoading(false);
-            }
-        };
-        fetchMeta();
-    }, [data.job_url]);
+
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -365,18 +344,18 @@ export default function ApplicationEditor({ application }: { application: Applic
                                 fallbackCompany={data.company_name}
                                 fallbackRole={data.role}
                                 fallbackLocation={data.location}
-                techStack={data.tech_stack}
-                missions={data.missions}
-                meta={jobMeta}
-                loading={metaLoading}
-                error={metaError}
-                onFallbackChange={(val) => setData({ ...data, job_description: val })}
-                fallbackValue={data.job_description || ""}
-                dailyTasks={data.daily_tasks_forecast}
-                        companySummary={data.company_summary || buildCompanySummary(jobMeta?.description || data.job_description || data.insights || "", data.company_name)}
-                        recruitmentProcess={data.recruitment_process}
-                        profileRequirements={data.profile_requirements}
-                    />
+                                techStack={data.tech_stack}
+                                missions={data.missions}
+                                meta={null}
+                                loading={false}
+                                error={null}
+                                onFallbackChange={(val) => setData({ ...data, job_description: val })}
+                                fallbackValue={data.job_description || ""}
+                                dailyTasks={data.daily_tasks_forecast}
+                                companySummary={data.company_summary || buildCompanySummary(data.job_description || data.insights || "", data.company_name)}
+                                recruitmentProcess={data.recruitment_process}
+                                profileRequirements={data.profile_requirements}
+                            />
 
                             <div className="space-y-1">
                                 <label className="text-xs uppercase font-bold text-muted-foreground">Notes IA (contexte perso)</label>

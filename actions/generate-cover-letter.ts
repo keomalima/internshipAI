@@ -12,6 +12,7 @@ export async function generateCoverLetter(
   const userProfile = await getUserProfile();
 
   const cvText = userProfile?.cv_content;
+  const bioPreferences = userProfile?.bio_preferences;
   const fullName = userProfile?.full_name?.trim();
   const email = userProfile?.email?.trim();
   const phone = userProfile?.phone?.trim();
@@ -56,6 +57,7 @@ CONTEXTE :
 - CV complet : fourni dans le message système (utilise UNIQUEMENT les faits vérifiables)
 - Offre : ${jobDescription}
 - Disponibilité : ${availabilityStart}, ${availabilityDuration}
+${bioPreferences ? `- Parcours et objectifs du candidat : ${bioPreferences}` : ''}
 - Note du candidat (à appliquer strictement, même si cela implique d'ajuster le wording) : ${userContext && userContext.trim().length > 0 ? userContext : "Aucune note"}
 
 STRUCTURE :

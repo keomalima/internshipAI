@@ -15,8 +15,6 @@ export default function NewApplicationPage() {
     const router = useRouter();
     const [jobDescription, setJobDescription] = useState("");
     const [jobUrl, setJobUrl] = useState("");
-    const [jobMetaLoading, setJobMetaLoading] = useState(false);
-    const [jobMetaError, setJobMetaError] = useState<string | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isAnalyzingGap, setIsAnalyzingGap] = useState(false);
@@ -28,33 +26,9 @@ export default function NewApplicationPage() {
     const [profileRequirements, setProfileRequirements] = useState<string[]>([]);
     const [companySummary, setCompanySummary] = useState("");
 
-    const fetchJobMeta = async () => {
-        if (!jobUrl) return null;
-        setJobMetaLoading(true);
-        setJobMetaError(null);
-        try {
-            const res = await fetch(`/api/job-metadata?url=${encodeURIComponent(jobUrl)}`);
-            if (!res.ok) throw new Error("fetch failed");
-            const json = await res.json();
-            if (!jobDescription && json?.description) {
-                setJobDescription(json.description);
-            }
-            if (json?.recruitment_process) {
-                setRecruitmentProcess(json.recruitment_process);
-            }
-            return json;
-        } catch {
-            setJobMetaError("Impossible de récupérer l'offre via le lien.");
-            return null;
-        } finally {
-            setJobMetaLoading(false);
-        }
-    };
+
 
     const handleAnalyze = async () => {
-        if (!jobDescription.trim() && jobUrl) {
-            await fetchJobMeta();
-        }
         if (!jobDescription.trim()) {
             return;
         }
@@ -147,18 +121,6 @@ export default function NewApplicationPage() {
                                 value={jobUrl}
                                 onChange={(e) => setJobUrl(e.target.value)}
                             />
-                            <Button
-                                variant="secondary"
-                                className="w-full mb-2"
-                                onClick={fetchJobMeta}
-                                disabled={jobMetaLoading || !jobUrl}
-                            >
-                                {jobMetaLoading ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
-                                Récupérer depuis le lien
-                            </Button>
-                            {jobMetaError && (
-                                <div className="text-xs text-red-500 mb-1">{jobMetaError}</div>
-                            )}
                             <textarea
                                 className="w-full h-64 p-3 rounded-md border text-sm resize-none focus:outline-none focus:ring-2 focus:ring-black mb-4"
                                 placeholder="Collez ici la description du poste..."

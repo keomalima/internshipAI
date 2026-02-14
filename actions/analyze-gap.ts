@@ -10,6 +10,7 @@ export async function analyzeGap(
 ): Promise<string> {
   const userProfile = await getUserProfile();
   const cvText = userProfile?.cv_content;
+  const bioPreferences = userProfile?.bio_preferences;
 
   if (!cvText) {
     throw new Error("CV introuvable dans le profil.");
@@ -24,7 +25,10 @@ export async function analyzeGap(
       
       CV : fourni dans le message système précédent (cacheable).
       
-      Tâche : Analyse le profil par rapport à l'offre.
+      ${bioPreferences ? `Contexte additionnel du candidat (objectifs, préférences de stage) :
+      ${bioPreferences}
+      ` : ''}
+      Tâche : Analyse le profil par rapport à l'offre${bioPreferences ? ' en tenant compte de ses objectifs et de ses préférences' : ''}.
       
       CONSIGNES DE FORMATAGE (STRICT) :
       - Utilise du Markdown standard.
