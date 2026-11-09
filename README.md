@@ -1,77 +1,50 @@
-# Intelligent Internship Manager
+# Intelligent Internship Manager — AI Job Application Prototype
 
-This is an AI-powered Internship Application Manager built with Next.js 14, Supabase, and Google Gemini.
+A job-application management prototype combining a dashboard with LLM-assisted job-description analysis and CV matching.
 
-## Features
+**Status:** experimental / portfolio project, **not production-ready**. The repository is separate from any Notion + MCP workflow unless explicitly documented otherwise.
 
-- **Job Analysis**: Extract key info (Company, Role, Missions) from job descriptions using AI.
-- **CV Analysis**: Compare your CV with job offers (Gap Analysis).
-- **Content Generation**: Generate personalized cover letters and emails.
-- **Dashboard**: Track applications with a Kanban or Table view.
-- **Dark/Light Mode**: Minimalist Notion-style interface.
+## Product idea
 
-## Prerequisites
+Job searches involve repetitive tasks: extracting structured information from vacancies, comparing requirements with a CV, drafting application materials and tracking next steps. This project explores a single interface for those workflows.
 
-- **Node.js 20+** (Required for Next.js 14 Server Actions)
-- **Supabase Account**: For the database.
-- **Google Gemini API Key**: For AI features.
+## Features explored
 
-## Setup
+- Extract information from job descriptions with an LLM
+- Compare a CV against an offer to identify possible gaps
+- Generate drafts for application emails and cover letters
+- Track applications in Kanban or table views
+- Light/dark interface
 
-1.  **Clone the repository**.
-2.  **Install dependencies**:
-    ```bash
-    npm install
-    # or
-    pnpm install
-    ```
-3.  **Environment Variables**:
-    Create a `.env.local` file in the root directory and add:
-    ```env
-    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-    GEMINI_API_KEY=your_gemini_api_key
-    ```
+## Technologies
 
-4.  **Database Setup (Supabase)**:
-    Go to your Supabase Dashboard -> SQL Editor and run the script found in `supabase/schema.sql`:
+- **Next.js / React** and Tailwind CSS
+- **Supabase / PostgreSQL** for application data
+- **Google Gemini SDK** for LLM requests
+- **Optional OpenAI fallback** in the AI service
+- PDF parsing for CV-related workflows
 
-    ```sql
-    -- Create the applications table
-    create type application_status as enum ('En attente', 'Postulé', 'Entretien', 'Refusé');
+The AI implementation includes calls to Gemini and requests for JSON-formatted model responses. Generated results should be reviewed and validated; they are not verified facts.
 
-    create table applications (
-      id uuid default gen_random_uuid() primary key,
-      created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-      company_name text not null,
-      role text not null,
-      location text,
-      status application_status default 'En attente'::application_status,
-      job_description text,
-      missions text[],
-      insights text,
-      cover_letter text,
-      email_content text,
-      gap_analysis text
-    );
+## Run locally
 
-    -- Enable Row Level Security (RLS)
-    alter table applications enable row level security;
-    create policy "Enable all access for now" on applications for all using (true);
-    ```
-
-## Running the App
+Requirements: Node.js, npm, a Supabase project and a Gemini API key.
 
 ```bash
+npm install
+cp .env.local.example .env.local
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser.
+Configure `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and the server-side `GEMINI_API_KEY` in `.env.local`. Keep API keys out of version control. Open http://localhost:3000.
 
-## Tech Stack
+**Database/security warning:** The original example schema includes a permissive Supabase row-level-security policy (`using (true)`). Do **not** deploy that policy with personal CVs, application data or real users. Configure and verify authentication and user-scoped RLS policies before deployment. Review the SQL and access controls yourself before running the included schema.
 
-- **Framework**: Next.js 14 (App Router)
-- **Styling**: Tailwind CSS
-- **Database**: Supabase
-- **AI**: Google Gemini SDK (`@google/generative-ai`)
-- **PDF Parsing**: `pdf-parse`
+## What I would improve before production
+
+1. Enforce per-user database access and review all server/API authorization paths.
+2. Validate structured LLM responses and handle missing, inconsistent or fabricated information.
+3. Add automated integration tests and usage limits for AI endpoints.
+4. Document a reproducible deployment process and test the full user journey.
+
+This project demonstrates hands-on experimentation with AI-powered business workflows. It is not a claim of RAG, model training, or a production-grade agent platform.
