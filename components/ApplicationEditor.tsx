@@ -1,261 +1,63 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Save, Sparkles, Wand2 } from "lucide-react";
+import {
+    ArrowLeft, Loader2, Save, Check, ExternalLink, MapPin, RefreshCw, Sparkles,
+    ChevronDown, ChevronRight,
+} from "lucide-react";
 
 import { Application, ApplicationStatus } from "@/types";
 import { updateApplication } from "@/actions/applications";
-import { generateCoverLetter } from "@/actions/generate-cover-letter";
-import { generateEmail } from "@/actions/generate-email";
+import { analyzeGap } from "@/actions/analyze-gap";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatePicker } from "@/components/DatePicker";
-import RichTextEditor from "@/components/RichTextEditor";
-import DownloadPdfButton from "@/components/DownloadPdfButton";
+import { CompanyAvatar } from "@/components/CompanyAvatar";
+import {
+    ScoreRing, scoreTone, PointList, InsightNotes, BulletList, RequirementList,
+    ProcessSteps, TechTags,
+} from "@/components/analysis";
+import { parseGapAnalysis, toLines } from "@/lib/parse-analysis";
+import { STATUS_STYLES, statusStyle } from "@/lib/status";
 
-type JobMeta = { title?: string | null; company?: string | null; company_logo?: string | null; location?: string | null; description?: string | null };
+/*
+ * Detail page for one application. Focused on reading the analysis:
+ * score + fit first, offer details second. Cover letter / email generation
+ * is hidden for now (actions still exist in /actions if needed again).
+ */
 
-function buildCompanySummary(raw: string, company: string) {
-    if (!raw) return "";
-    const sentences = raw.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
-    const isJobSentence = (s: string) => /recrut|alternance|stage|poste|offre|développeur|developer|job/i.test(s);
-    const prefer = sentences.find(s => s.toLowerCase().includes(company.toLowerCase()) && !isJobSentence(s));
-    const fallback = sentences.find(s => !isJobSentence(s)) || sentences[0];
-    const picked = prefer || fallback || raw;
-    const cleaned = picked.replace(/\s+/g, " ").trim();
-    const withName = cleaned.toLowerCase().includes(company.toLowerCase())
-        ? cleaned
-        : `${company} — ${cleaned}`;
-    return withName.slice(0, 200);
+const STATUSES = Object.keys(STATUS_STYLES) as ApplicationStatus[];
+
+function snapshot(a: Application) {
+    return JSON.stringify([a.status, a.applied_at ?? null, a.cover_letter_context ?? "", a.gap_analysis ?? ""]);
 }
 
-type Requirement = { label: "Must" | "Nice" | "Req"; text: string };
-function normalizeRequirements(reqs?: string[] | null): Requirement[] {
-    if (!reqs) return [];
-    return reqs.map((r) => {
-        const trimmed = r.replace(/^[*-]\s*/, "").replace(/\*\*/g, "").trim();
-        let label: Requirement["label"] = "Req";
-        if (/^must[:\s-]/i.test(trimmed) || /\bmust\b/i.test(trimmed)) label = "Must";
-        if (/^nice[:\s-]/i.test(trimmed) || /\bnice\b/i.test(trimmed)) label = "Nice";
-        const text = trimmed.replace(/^(must|nice)[:\s-]*/i, "");
-        return { label, text };
-    }).filter(r => r.text.length > 0);
-}
-
-/* ---------- small subcomponents ---------- */
-const TechTags = ({ tech }: { tech?: string[] }) => {
-    if (!tech || tech.length === 0) return null;
-    return (
-        <div className="flex flex-wrap gap-1">
-            {tech.map((t, i) => (
-                <span key={i} className="text-[11px] bg-blue-50 text-blue-700 px-2 py-1 rounded-full">
-                    {t}
-                </span>
-            ))}
-        </div>
-    );
-};
-
-const MissionList = ({ missions }: { missions?: string[] }) => {
-    if (!missions || missions.length === 0) return null;
-    return (
-        <div className="space-y-1">
-            <label className="text-xs uppercase font-bold text-muted-foreground">Missions</label>
-            <ul className="text-xs bg-gray-50 border border-gray-100 p-3 rounded space-y-1 list-disc list-inside">
-                {missions.map((m, i) => <li key={i}>{m}</li>)}
-            </ul>
-        </div>
-    );
-};
-
-const GapAnalysisCard = ({ gapAnalysis, insights }: { gapAnalysis?: string | null; insights?: string | null }) => (
-    <div className="space-y-4">
-        <div className="space-y-1">
-            <label className="text-xs uppercase font-bold text-muted-foreground">Insights</label>
-            <div className="prose prose-sm max-w-none text-xs bg-purple-50 border border-purple-100 p-4 rounded min-h-[5rem] max-h-60 overflow-y-auto">
-                <ReactMarkdown>{insights || "*Aucun insight disponible*"}</ReactMarkdown>
-            </div>
-        </div>
-        <div className="space-y-1">
-            <label className="text-xs uppercase font-bold text-muted-foreground">Gap Analysis</label>
-            <div className="prose prose-sm max-w-none text-xs bg-gray-50 border border-gray-100 p-4 rounded min-h-[10rem] max-h-80 overflow-y-auto leading-relaxed space-y-2">
-                <ReactMarkdown>{gapAnalysis || "*Analyse non disponible*"}</ReactMarkdown>
-            </div>
-        </div>
-    </div>
-);
-
-const JobMetadataCard = ({
-    jobUrl,
-    fallbackCompany,
-    fallbackRole,
-    fallbackLocation,
-    techStack,
-    missions,
-    meta,
-    loading,
-    error,
-    fallbackValue,
-    onFallbackChange,
-    dailyTasks,
-    companySummary,
-    recruitmentProcess,
-    profileRequirements,
-}: {
-    jobUrl?: string | null;
-    fallbackCompany: string;
-    fallbackRole: string;
-    fallbackLocation?: string | null;
-    techStack?: string[];
-    missions?: string[];
-    meta: JobMeta | null;
-    loading: boolean;
-    error: string | null;
-    fallbackValue: string;
-    onFallbackChange: (val: string) => void;
-    dailyTasks?: string | null;
-    companySummary?: string | null;
-    recruitmentProcess?: string | null;
-    profileRequirements?: string[] | null;
-}) => {
-    const showFallback = Boolean(error) || !jobUrl;
-    const displayCompany = meta?.company || fallbackCompany;
-    const displayTitle = meta?.title || fallbackRole;
-    const displayLocation = meta?.location || fallbackLocation;
-    const titleNode = jobUrl ? (
-        <a
-            href={jobUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-base font-bold leading-tight text-blue-700 hover:underline"
-        >
-            {displayTitle}
-        </a>
-    ) : (
-        <span className="text-base font-bold leading-tight">{displayTitle}</span>
-    );
-
-    return (
-        <div className="space-y-3">
-            <div className="border rounded-lg p-4 bg-white shadow-sm">
-                <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-gray-100 rounded-md flex items-center justify-center text-xs text-gray-500 shrink-0 uppercase">
-                        {displayCompany?.slice(0, 2) || "—"}
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <div className="text-sm font-semibold leading-tight">{displayCompany}</div>
-                        {titleNode}
-                        <div className="text-xs text-muted-foreground">{displayLocation || "—"}</div>
-                    </div>
-                </div>
-
-                {loading && (
-                    <div className="text-xs text-muted-foreground mt-3">Chargement des métadonnées...</div>
-                )}
-                {!loading && error && (
-                    <div className="text-xs text-red-500 mt-3">Échec de récupération de l&apos;offre. Saisissez un texte de secours ci-dessous.</div>
-                )}
-            </div>
-
-            <div className="space-y-3">
-                <TechTags tech={techStack} />
-                {companySummary && (
-                    <div className="space-y-1">
-                        <label className="text-xs uppercase font-bold text-muted-foreground">Entreprise</label>
-                        <div className="text-xs bg-slate-50 border border-slate-100 p-3 rounded leading-relaxed">
-                            {companySummary}
-                        </div>
-                    </div>
-                )}
-                <MissionList missions={missions} />
-                {dailyTasks && (
-                    <div className="space-y-1">
-                        <label className="text-xs uppercase font-bold text-muted-foreground">Tâches probables (forecast)</label>
-                        <div className="text-xs bg-amber-50 border border-amber-100 p-3 rounded whitespace-pre-line leading-relaxed">
-                            {dailyTasks}
-                        </div>
-                    </div>
-                )}
-                {profileRequirements && profileRequirements.length > 0 && (
-                    <div className="space-y-1">
-                        <label className="text-xs uppercase font-bold text-muted-foreground">Profil recherché</label>
-                        <ul className="text-xs bg-gray-50 border border-gray-100 p-3 rounded space-y-1">
-                            {normalizeRequirements(profileRequirements).map((p, i) => (
-                                <li key={i} className="flex items-start gap-2">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${p.label === "Must" ? "bg-red-100 text-red-700" : p.label === "Nice" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-700"}`}>
-                                        {p.label}
-                                    </span>
-                                    <span className="leading-snug">{p.text}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-                {recruitmentProcess && (
-                    <div className="space-y-1">
-                        <label className="text-xs uppercase font-bold text-muted-foreground">Processus de recrutement</label>
-                        <div className="text-xs bg-gray-50 border border-gray-100 p-3 rounded whitespace-pre-line leading-relaxed">
-                            {recruitmentProcess}
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {showFallback && (
-                <div className="space-y-1">
-                    <label className="text-xs uppercase font-bold text-muted-foreground">Texte de l&apos;offre (fallback)</label>
-                    <textarea
-                        className="w-full h-40 border p-2 rounded text-sm resize-none"
-                        value={fallbackValue}
-                        onChange={(e) => onFallbackChange(e.target.value)}
-                        placeholder="Collez le texte de l'offre si la récupération automatique échoue."
-                    />
-                </div>
-            )}
-        </div>
-    );
-};
-
-/* ---------- main component ---------- */
 export default function ApplicationEditor({ application }: { application: Application }) {
     const router = useRouter();
     const [data, setData] = useState<Application>(application);
+    const [saved, setSaved] = useState(() => snapshot(application));
     const [isSaving, setIsSaving] = useState(false);
-    const [isGeneratingLetter, setIsGeneratingLetter] = useState(false);
-    const [isGeneratingEmail, setIsGeneratingEmail] = useState(false);
-    const [aiProvider, setAiProvider] = useState<"auto" | "gemini" | "openai">("auto");
-    const [refineHint, setRefineHint] = useState<string>("");
+    const [justSaved, setJustSaved] = useState(false);
+    const [gapState, setGapState] = useState<{ loading: boolean; error?: string }>({ loading: false });
 
-
+    const dirty = snapshot(data) !== saved;
+    const gap = useMemo(() => parseGapAnalysis(data.gap_analysis || ""), [data.gap_analysis]);
+    const hasGap = gap.score !== null || gap.strengths.length > 0 || gap.gaps.length > 0;
 
     const handleSave = async () => {
         setIsSaving(true);
         try {
             await updateApplication(data.id, {
-                company_name: data.company_name,
-                role: data.role,
-                location: data.location || "",
                 status: data.status,
-                job_description: data.job_description || "",
-                missions: data.missions || [],
-                insights: data.insights || "",
-                cover_letter: data.cover_letter || "",
-                email_content: data.email_content || "",
-                gap_analysis: data.gap_analysis || "",
-                job_url: data.job_url || "",
-                tech_stack: data.tech_stack || [],
-                daily_tasks_forecast: data.daily_tasks_forecast || "",
-                company_summary: data.company_summary || "",
-                cover_letter_context: data.cover_letter_context || "",
-                recruitment_process: data.recruitment_process || "",
-                profile_requirements: data.profile_requirements || [],
                 applied_at: data.applied_at ? new Date(data.applied_at).toISOString() : undefined,
+                cover_letter_context: data.cover_letter_context || "",
+                gap_analysis: data.gap_analysis || "",
             });
+            setSaved(snapshot(data));
+            setJustSaved(true);
+            setTimeout(() => setJustSaved(false), 2000);
             router.refresh();
-            alert("Sauvegardé !");
         } catch (error) {
             console.error("Save failed", error);
             alert("Erreur lors de la sauvegarde.");
@@ -264,199 +66,272 @@ export default function ApplicationEditor({ application }: { application: Applic
         }
     };
 
-    const handleGenerateLetter = async () => {
-        if (!data.job_description && !data.insights) return alert("Description du poste manquante");
-
-        setIsGeneratingLetter(true);
-        try {
-            const base = data.job_description || `${data.role} chez ${data.company_name}`;
-            // Combine both persistent context and temporary refinement instructions
-            const contextParts = [
-                data.cover_letter_context?.trim(),
-                refineHint?.trim()
-            ].filter(Boolean);
-            const userContext = contextParts.join("\n\n");
-            const letter = await generateCoverLetter(base, aiProvider, undefined, userContext);
-            setData(prev => ({ ...prev, cover_letter: letter }));
-        } catch (error) {
-            console.error(error);
-            alert("Erreur: Vérifiez que votre CV est bien enregistré dans les Paramètres.");
-        } finally {
-            setIsGeneratingLetter(false);
+    const runGap = async () => {
+        if (!data.job_description) {
+            setGapState({ loading: false, error: "Description de l'offre manquante." });
+            return;
         }
-    };
-
-    const handleGenerateEmail = async () => {
-        if (!data.job_description && !data.insights) return alert("Description du poste manquante");
-        setIsGeneratingEmail(true);
+        setGapState({ loading: true });
         try {
-            const base = data.job_description || `${data.role} chez ${data.company_name}`;
-            // Combine both persistent context and temporary refinement instructions
-            const contextParts = [
-                data.cover_letter_context?.trim(),
-                refineHint?.trim()
-            ].filter(Boolean);
-            const userNote = contextParts.join("\n\n");
-            const emailText = await generateEmail(base, userNote, aiProvider);
-            setData(prev => ({ ...prev, email_content: emailText }));
+            const text = await analyzeGap(data.job_description);
+            const next = { ...data, gap_analysis: text };
+            setData(next);
+            // Persist straight away: re-running an analysis shouldn't need a manual save.
+            await updateApplication(data.id, { gap_analysis: text });
+            setSaved((prev) => {
+                const p = JSON.parse(prev);
+                p[3] = text;
+                return JSON.stringify(p);
+            });
+            setGapState({ loading: false });
         } catch (error) {
-            console.error(error);
-            alert("Erreur: Vérifiez que votre CV est bien enregistré dans les Paramètres.");
-        } finally {
-            setIsGeneratingEmail(false);
+            const msg = error instanceof Error ? error.message : "";
+            setGapState({
+                loading: false,
+                error: /cv/i.test(msg)
+                    ? "Aucun CV trouvé. Ajoutez-le dans vos paramètres."
+                    : "L'analyse a échoué. Réessayez.",
+            });
         }
     };
 
     return (
-        <div className="p-8 max-w-7xl mx-auto min-h-screen space-y-8">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div className="flex items-center gap-4">
-                    <Link href="/" className="text-muted-foreground hover:text-foreground">
-                        <ArrowLeft size={20} />
-                    </Link>
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight">{data.role}</h1>
-                        <p className="text-lg text-muted-foreground">{data.company_name}</p>
+        <div className="min-h-screen">
+            {/* Top bar */}
+            <div className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8 h-14 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <Link href="/" className="p-1.5 -ml-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Retour">
+                            <ArrowLeft size={18} />
+                        </Link>
+                        <div className="min-w-0 hidden sm:block text-sm">
+                            <span className="font-medium truncate">{data.role}</span>
+                            <span className="text-muted-foreground"> · {data.company_name}</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <StatusSelect
+                            value={data.status}
+                            onChange={(status) => setData({ ...data, status })}
+                        />
+                        <DatePicker
+                            date={data.applied_at ? new Date(data.applied_at) : undefined}
+                            setDate={(date) => setData({ ...data, applied_at: date ? date.toISOString() : undefined })}
+                            label="Date d'envoi"
+                            className="hidden sm:inline-flex w-auto h-9 rounded-lg text-sm"
+                        />
+                        <Button
+                            size="sm"
+                            onClick={handleSave}
+                            disabled={isSaving || (!dirty && !justSaved)}
+                            className="gap-1.5 rounded-lg sm:min-w-[118px]"
+                        >
+                            {isSaving ? <Loader2 className="animate-spin" size={16} />
+                                : justSaved ? <Check size={16} /> : <Save size={16} />}
+                            <span className="hidden sm:inline">{justSaved ? "Enregistré" : "Enregistrer"}</span>
+                        </Button>
                     </div>
                 </div>
-                <div className="flex flex-wrap gap-2 items-center">
+            </div>
+
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8 py-6 sm:py-8 space-y-5">
+                <div className="sm:hidden">
                     <DatePicker
                         date={data.applied_at ? new Date(data.applied_at) : undefined}
                         setDate={(date) => setData({ ...data, applied_at: date ? date.toISOString() : undefined })}
-                        label="Date de postulation"
+                        label="Date d'envoi"
+                        className="w-full h-9 rounded-lg text-sm"
                     />
-                    <select
-                        value={data.status}
-                        onChange={(e) => setData({ ...data, status: e.target.value as ApplicationStatus })}
-                        className="border p-2 rounded-md bg-white text-sm h-10"
-                    >
-                        {["En attente", "Postulé", "Entretien", "Refusé"].map(s => (
-                            <option key={s} value={s}>{s}</option>
-                        ))}
-                    </select>
-                    <Button onClick={handleSave} disabled={isSaving} className="gap-2">
-                        {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                        Sauvegarder
-                    </Button>
                 </div>
-            </div>
-
-            <div className="grid lg:grid-cols-2 gap-8">
-                {/* Left: Offer display & gap analysis */}
-                <div className="space-y-6">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Offre & Info</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <JobMetadataCard
-                                jobUrl={data.job_url}
-                                fallbackCompany={data.company_name}
-                                fallbackRole={data.role}
-                                fallbackLocation={data.location}
-                                techStack={data.tech_stack}
-                                missions={data.missions}
-                                meta={null}
-                                loading={false}
-                                error={null}
-                                onFallbackChange={(val) => setData({ ...data, job_description: val })}
-                                fallbackValue={data.job_description || ""}
-                                dailyTasks={data.daily_tasks_forecast}
-                                companySummary={data.company_summary || buildCompanySummary(data.job_description || data.insights || "", data.company_name)}
-                                recruitmentProcess={data.recruitment_process}
-                                profileRequirements={data.profile_requirements}
-                            />
-
-                            <div className="space-y-1">
-                                <label className="text-xs uppercase font-bold text-muted-foreground">Notes IA (contexte perso)</label>
-                                <textarea
-                                    className="w-full border p-2 rounded text-xs resize-none h-20"
-                                    placeholder="Précise un angle, un manque de CV, une contrainte..."
-                                    value={data.cover_letter_context || ""}
-                                    onChange={(e) => setData({ ...data, cover_letter_context: e.target.value })}
-                                />
+                {/* Hero: identity + score */}
+                <section className="rounded-xl border bg-card p-6 flex flex-col md:flex-row gap-6 md:items-center justify-between">
+                    <div className="flex items-start gap-4 min-w-0">
+                        <CompanyAvatar name={data.company_name} size="lg" />
+                        <div className="min-w-0 space-y-2">
+                            <div>
+                                <h1 className="text-xl font-semibold tracking-tight leading-snug">{data.role}</h1>
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground mt-0.5">
+                                    <span className="text-foreground">{data.company_name}</span>
+                                    {data.location && (
+                                        <span className="inline-flex items-center gap-1"><MapPin size={13} />{data.location}</span>
+                                    )}
+                                    {data.job_url && (
+                                        <a href={data.job_url} target="_blank" rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 hover:text-foreground underline-offset-2 hover:underline">
+                                            Voir l&apos;offre <ExternalLink size={12} />
+                                        </a>
+                                    )}
+                                </div>
                             </div>
+                            {data.company_summary && (
+                                <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">{data.company_summary}</p>
+                            )}
+                            <TechTags items={data.tech_stack} />
+                        </div>
+                    </div>
 
-                            <GapAnalysisCard gapAnalysis={data.gap_analysis} insights={data.insights} />
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Right: Content Generation */}
-                <div className="space-y-6">
-                    <Card className="flex flex-col">
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle>Lettre de Motivation</CardTitle>
-                            <div className="flex flex-wrap gap-2 items-center">
-                                <select
-                                    className="border p-2 rounded text-xs"
-                                    value={aiProvider}
-                                    onChange={(e) => setAiProvider(e.target.value as "auto" | "gemini" | "openai")}
-                                >
-                                    <option value="auto">Auto</option>
-                                    <option value="gemini">Gemini</option>
-                                    <option value="openai">OpenAI</option>
-                                </select>
-                                {data.cover_letter && (
-                                    <DownloadPdfButton
-                                        content={data.cover_letter}
-                                        fileName={`lettre_motivation_${data.company_name}.pdf`}
-                                    />
-                                )}
-                                <Button
-                                    size="sm"
-                                    onClick={handleGenerateLetter}
-                                    disabled={isGeneratingLetter}
-                                    className="gap-2 bg-white text-black border border-input hover:bg-accent hover:text-accent-foreground"
-                                >
-                                    {isGeneratingLetter ? <Loader2 className="animate-spin" size={14} /> : <Wand2 size={14} />}
-                                    {data.cover_letter ? "Régénérer" : "Générer"}
-                                </Button>
+                    <div className="md:pl-6 md:border-l shrink-0">
+                        {gapState.loading ? (
+                            <div className="flex items-center gap-4 animate-pulse">
+                                <div className="h-24 w-24 rounded-full bg-muted" />
+                                <div className="space-y-2"><div className="h-3 w-28 rounded bg-muted" /><div className="h-3 w-20 rounded bg-muted" /></div>
                             </div>
-                        </CardHeader>
-                        <CardContent className="flex-1 min-h-[300px] space-y-3">
-                            <div className="space-y-1">
-                                <label className="text-xs uppercase font-bold text-muted-foreground">Instructions de retouche (optionnel)</label>
-                                <textarea
-                                    className="w-full border p-2 rounded text-xs resize-none h-20"
-                                    placeholder="Ex: Garde le ton concis, insiste sur React, enlève les formules trop formelles..."
-                                    value={refineHint}
-                                    onChange={(e) => setRefineHint(e.target.value)}
-                                />
+                        ) : gap.score !== null ? (
+                            <div className="flex items-center gap-4">
+                                <ScoreRing score={gap.score} size="lg" />
+                                <div>
+                                    <div className="font-medium">{scoreTone(gap.score).text}</div>
+                                    <div className="text-xs text-muted-foreground">Adéquation avec votre CV</div>
+                                    <div className="text-xs text-muted-foreground mt-2 tabular-nums">
+                                        {gap.strengths.length} atout{gap.strengths.length > 1 ? "s" : ""} · {gap.gaps.length} écart{gap.gaps.length > 1 ? "s" : ""}
+                                    </div>
+                                </div>
                             </div>
-                            <RichTextEditor
-                                value={data.cover_letter || ""}
-                                onChange={(val) => setData({ ...data, cover_letter: val })}
-                                placeholder="Générez ou écrivez votre lettre ici..."
-                            />
-                        </CardContent>
-                    </Card>
-
-                    {/* Email Generator */}
-                    <Card className="flex flex-col">
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle>Email d&apos;accompagnement</CardTitle>
-                            <Button
-                                size="sm"
-                                onClick={handleGenerateEmail}
-                                disabled={isGeneratingEmail}
-                                className="gap-2 bg-white text-black border border-input hover:bg-accent hover:text-accent-foreground"
-                            >
-                                {isGeneratingEmail ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                                {data.email_content ? "Régénérer" : "Générer"}
+                        ) : (
+                            <Button variant="outline" onClick={runGap} className="gap-2 rounded-lg">
+                                <Sparkles size={16} /> Calculer mon score
                             </Button>
-                        </CardHeader>
-                        <CardContent>
+                        )}
+                    </div>
+                </section>
+
+                {gapState.error && (
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900 flex items-center justify-between gap-3">
+                        {gapState.error}
+                        <Link href="/settings" className="inline-flex items-center gap-1 text-xs font-medium hover:underline shrink-0">
+                            Paramètres <ChevronRight size={13} />
+                        </Link>
+                    </div>
+                )}
+
+                <div className="grid gap-5 lg:grid-cols-5 items-start">
+                    {/* Left: fit analysis (priority) */}
+                    <div className="lg:col-span-3 space-y-5">
+                        <Card
+                            title="Mon adéquation"
+                            action={hasGap && !gapState.loading ? (
+                                <button onClick={runGap} title="Relancer l'analyse"
+                                    className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                                    <RefreshCw size={15} />
+                                </button>
+                            ) : null}
+                        >
+                            {gapState.loading ? (
+                                <div className="space-y-3 animate-pulse">
+                                    {[0.9, 0.7, 0.85, 0.6, 0.8, 0.5].map((w, i) => (
+                                        <div key={i} className="h-3 rounded bg-muted" style={{ width: `${w * 100}%` }} />
+                                    ))}
+                                </div>
+                            ) : hasGap ? (
+                                <div className="grid gap-6 md:grid-cols-2">
+                                    <PointList title="Points forts" points={gap.strengths} tone="good" />
+                                    <PointList title="À travailler" points={gap.gaps} tone="warn" />
+                                </div>
+                            ) : data.gap_analysis ? (
+                                <p className="text-sm whitespace-pre-line leading-relaxed">{data.gap_analysis}</p>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">
+                                    Pas encore d&apos;analyse. Cliquez sur « Calculer mon score » pour comparer l&apos;offre à votre CV.
+                                </p>
+                            )}
+                        </Card>
+
+                        {data.insights && (
+                            <Card title="À retenir">
+                                <InsightNotes insights={data.insights} title="" />
+                            </Card>
+                        )}
+
+                        <Card title="Mes notes">
                             <textarea
-                                className="w-full h-32 border p-4 rounded text-sm resize-none"
-                                value={data.email_content || ""}
-                                onChange={e => setData({ ...data, email_content: e.target.value })}
-                                placeholder="L'email d'accompagnement..."
+                                className="w-full min-h-24 rounded-lg border border-input bg-background p-3 text-sm leading-relaxed resize-y placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
+                                placeholder="Contact, relance prévue, impressions après l'entretien…"
+                                value={data.cover_letter_context || ""}
+                                onChange={(e) => setData({ ...data, cover_letter_context: e.target.value })}
                             />
-                        </CardContent>
-                    </Card>
+                        </Card>
+                    </div>
+
+                    {/* Right: the offer */}
+                    <div className="lg:col-span-2 space-y-5">
+                        <Card title="Le poste">
+                            <div className="space-y-5">
+                                <BulletList title="Missions" items={data.missions} />
+                                <RequirementList items={data.profile_requirements} />
+                                <DailyTasks text={data.daily_tasks_forecast} />
+                            </div>
+                        </Card>
+
+                        {data.recruitment_process && (
+                            <Card title="Processus de recrutement">
+                                <ProcessSteps text={data.recruitment_process} title="" />
+                            </Card>
+                        )}
+                    </div>
                 </div>
             </div>
+        </div>
+    );
+}
+
+/* ---------- pieces ---------- */
+
+function Card({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+    return (
+        <section className="rounded-xl border bg-card p-5">
+            <header className="flex items-center justify-between mb-4 min-h-7">
+                <h2 className="font-semibold tracking-tight">{title}</h2>
+                {action}
+            </header>
+            {children}
+        </section>
+    );
+}
+
+function StatusSelect({ value, onChange }: { value: ApplicationStatus; onChange: (s: ApplicationStatus) => void }) {
+    const style = statusStyle(value);
+    return (
+        <label className={`relative inline-flex items-center gap-1.5 h-9 pl-3 pr-7 rounded-lg text-sm font-medium ring-1 ring-inset cursor-pointer ${style.badge}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+            {value}
+            <ChevronDown size={14} className="absolute right-2 opacity-60" />
+            <select
+                value={value}
+                onChange={(e) => onChange(e.target.value as ApplicationStatus)}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+                aria-label="Statut"
+            >
+                {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+        </label>
+    );
+}
+
+/** "Rédiger … (≈50% du temps)" → label + percentage bar. */
+function DailyTasks({ text }: { text?: string | null }) {
+    const tasks = useMemo(() => toLines(text || "").map((line) => {
+        const m = line.match(/^(.*?)\s*\(\s*≈?\s*(\d{1,3})\s*%[^)]*\)\s*$/);
+        return m ? { label: m[1], pct: Math.min(100, parseInt(m[2], 10)) } : { label: line, pct: null };
+    }), [text]);
+    if (!tasks.length) return null;
+    return (
+        <div>
+            <h3 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Au quotidien</h3>
+            <ul className="space-y-2.5 text-sm">
+                {tasks.map((t, i) => (
+                    <li key={i}>
+                        <div className="flex justify-between gap-3 leading-snug">
+                            <span>{t.label}</span>
+                            {t.pct !== null && <span className="text-muted-foreground tabular-nums shrink-0">{t.pct}%</span>}
+                        </div>
+                        {t.pct !== null && (
+                            <div className="mt-1 h-1 rounded-full bg-muted overflow-hidden">
+                                <div className="h-full rounded-full bg-stone-400" style={{ width: `${t.pct}%` }} />
+                            </div>
+                        )}
+                    </li>
+                ))}
+            </ul>
         </div>
     );
 }

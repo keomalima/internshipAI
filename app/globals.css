@@ -1,16 +1,77 @@
 @import "tailwindcss";
 
-@theme {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/*
+ * Design tokens. Components use shadcn-style class names (bg-primary,
+ * text-muted-foreground, border-input…). In Tailwind v4 those classes only
+ * exist when the matching --color-* variables are declared in @theme.
+ */
+:root {
+  --background: #fafaf9;
+  --foreground: #2f2e2b;
+
+  --card: #ffffff;
+  --card-foreground: #2f2e2b;
+  --popover: #ffffff;
+  --popover-foreground: #2f2e2b;
+
+  --primary: #262522;
+  --primary-foreground: #fafaf9;
+  --secondary: #f1f0ee;
+  --secondary-foreground: #2f2e2b;
+
+  --muted: #f3f2f0;
+  --muted-foreground: #7a7873;
+  --accent: #efeeeb;
+  --accent-foreground: #2f2e2b;
+
+  --destructive: #d14343;
+  --destructive-foreground: #ffffff;
+
+  --border: #e8e7e4;
+  --input: #e2e1dd;
+  --ring: #a8a6a0;
+
+  --radius: 0.625rem;
+  color-scheme: light;
 }
 
-:root {
-  --background: #ffffff;
-  --foreground: #37352f; /* Notion-like dark gray */
-  --muted: #f7f7f5; /* Notion-like light gray */
-  --border: #e9e9e8;
-  color-scheme: light;
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Tailwind v4 defaults borders to currentColor; keep them soft everywhere. */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
 }
 
 body {
@@ -20,7 +81,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom scrollbar for Notion vibe */
+::selection {
+  background: #e7e3d8;
+}
+
+/* Subtle scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -33,5 +98,5 @@ body {
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #d0d0d0;
+  background: #d0cfcb;
 }

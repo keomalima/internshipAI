@@ -24,7 +24,9 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useDroppable } from '@dnd-kit/core';
 import { Application, ApplicationStatus } from '@/types';
-import { Card, CardContent } from '@/components/ui/card';
+import { MapPin, ExternalLink } from 'lucide-react';
+import { CompanyAvatar } from '@/components/CompanyAvatar';
+import { statusStyle } from '@/lib/status';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -170,13 +172,13 @@ function KanbanColumn({ id, status, applications }: KanbanColumnProps) {
     const { setNodeRef } = useDroppable({ id }); // Make the whole column droppable
 
     return (
-        <div ref={setNodeRef} className="flex flex-col gap-4 min-w-[280px] w-full max-w-xs bg-muted/30 p-2 rounded-lg">
-            <div className="flex items-center justify-between px-2 mb-2">
-                <h3 className="font-semibold text-muted-foreground flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${getStatusColor(status)}`} />
+        <div ref={setNodeRef} className="flex flex-col gap-3 min-w-[272px] w-full max-w-xs rounded-xl bg-muted/60 p-2">
+            <div className="flex items-center justify-between px-2 pt-1">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${statusStyle(status).dot}`} />
                     {status}
                 </h3>
-                <span className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
+                <span className="text-xs text-muted-foreground tabular-nums">
                     {applications.length}
                 </span>
             </div>
@@ -186,7 +188,7 @@ function KanbanColumn({ id, status, applications }: KanbanColumnProps) {
                 items={applications.map(a => a.id)}
                 strategy={verticalListSortingStrategy}
             >
-                <div className="flex flex-col gap-3 min-h-[100px]">
+                <div className="flex flex-col gap-2 min-h-[100px]">
                     {applications.map((app) => (
                         <SortableApplicationCard key={app.id} application={app} />
                     ))}
@@ -227,49 +229,59 @@ function SortableApplicationCard({ application }: SortableApplicationCardProps) 
 
 function ApplicationCard({ application, isOverlay }: { application: Application, isOverlay?: boolean }) {
     const cardContent = (
-        <Card className={`cursor-grab hover:shadow-md transition-all ${isOverlay ? 'shadow-xl cursor-grabbing scale-105 rotate-2' : ''}`}>
-            <CardContent className="p-3 space-y-2">
-                <div className="flex justify-between items-start">
-                    <h4 className="font-semibold text-sm line-clamp-1" title={application.role}>{application.role}</h4>
+        <div
+            className={`group relative overflow-hidden rounded-lg border bg-card p-3 pl-4 cursor-grab transition-all
+                before:absolute before:inset-y-0 before:left-0 before:w-[3px] ${statusStyle(application.status).bar}
+                hover:-translate-y-px hover:shadow-[0_4px_12px_-4px_rgba(0,0,0,0.12)] hover:border-stone-300
+                ${isOverlay ? 'shadow-xl cursor-grabbing rotate-1' : ''}`}
+        >
+            <div className="flex items-start gap-2.5">
+                <CompanyAvatar name={application.company_name} size="sm" />
+                <div className="min-w-0 flex-1">
+                    <h4 className="font-medium text-sm leading-snug line-clamp-2" title={application.role}>{application.role}</h4>
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">{application.company_name}</p>
                 </div>
-                <p className="text-xs text-muted-foreground line-clamp-1">{application.company_name}</p>
+            </div>
 
-                <div className="flex flex-wrap gap-1 mt-2">
+            {(application.location || (application.tech_stack && application.tech_stack.length > 0)) && (
+                <div className="flex flex-wrap items-center gap-1 mt-3">
                     {application.location && (
-                        <span className="text-[10px] bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground mr-1">
+                            <MapPin size={11} />
                             {application.location}
                         </span>
                     )}
                     {application.tech_stack?.slice(0, 2).map((tech, i) => (
-                        <span key={i} className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">
+                        <span key={i} className="text-[11px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-md">
                             {tech}
                         </span>
                     ))}
                     {application.tech_stack && application.tech_stack.length > 2 && (
-                        <span className="text-[10px] text-gray-500">+{application.tech_stack.length - 2}</span>
+                        <span className="text-[11px] text-muted-foreground">+{application.tech_stack.length - 2}</span>
                     )}
                 </div>
+            )}
+
+            <div className="flex items-center justify-between mt-3 text-[11px] text-muted-foreground">
+                <span>
+                    {application.created_at ? formatDistanceToNow(new Date(application.created_at), { addSuffix: true, locale: fr }) : '–'}
+                </span>
                 {application.job_url && (
-                    <div className="text-[10px] text-blue-600 truncate">
-                        <button
-                            type="button"
-                            className="hover:underline"
-                            onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                window.open(application.job_url, "_blank", "noopener,noreferrer");
-                            }}
-                        >
-                            Voir l&apos;offre
-                        </button>
-                    </div>
+                    <button
+                        type="button"
+                        className="inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 hover:text-foreground transition-opacity"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            window.open(application.job_url, "_blank", "noopener,noreferrer");
+                        }}
+                    >
+                        Offre <ExternalLink size={11} />
+                    </button>
                 )}
-                {/* Date */}
-                <div className="w-full pt-1 text-[10px] text-gray-400 text-right">
-                    {application.created_at ? formatDistanceToNow(new Date(application.created_at), { addSuffix: true, locale: fr }) : '-'}
-                </div>
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
 
     if (isOverlay) {
@@ -281,14 +293,4 @@ function ApplicationCard({ application, isOverlay }: { application: Application,
             {cardContent}
         </Link>
     );
-}
-
-function getStatusColor(status: string) {
-    switch (status) {
-        case "En attente": return "bg-gray-400";
-        case "Postulé": return "bg-blue-500";
-        case "Entretien": return "bg-purple-500";
-        case "Refusé": return "bg-red-500";
-        default: return "bg-gray-400";
-    }
 }

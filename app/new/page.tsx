@@ -1,319 +1,357 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { analyzeJobDescription, JobAnalysisResult } from "@/actions/analyze-job";
 import { analyzeGap } from "@/actions/analyze-gap";
 import { createApplication } from "@/actions/applications";
-import { ArrowLeft, Loader2, Save, Sparkles, FileText } from "lucide-react";
-import Link from "next/link";
+import { parseGapAnalysis } from "@/lib/parse-analysis";
+import { ScoreSummary, PointList, InsightNotes, BulletList, RequirementList, ProcessSteps, TechTags } from "@/components/analysis";
 import { ApplicationDraft } from "@/types";
+import {
+    ArrowLeft, Loader2, Save, Sparkles, RefreshCw, MapPin,
+    Link2, FileSearch, Target, UserRound, ChevronRight,
+} from "lucide-react";
+
+type Provider = "auto" | "gemini" | "openai";
+type GapState = { status: "idle" | "loading" | "done" | "error"; text: string; error?: string };
 
 export default function NewApplicationPage() {
     const router = useRouter();
     const [jobDescription, setJobDescription] = useState("");
     const [jobUrl, setJobUrl] = useState("");
+    const [aiProvider, setAiProvider] = useState<Provider>("auto");
+
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analyzeError, setAnalyzeError] = useState("");
     const [isSaving, setIsSaving] = useState(false);
-    const [isAnalyzingGap, setIsAnalyzingGap] = useState(false);
 
-    const [analysisResult, setAnalysisResult] = useState<JobAnalysisResult | null>(null);
-    const [gapAnalysis, setGapAnalysis] = useState("");
-    const [aiProvider, setAiProvider] = useState<"auto" | "gemini" | "openai">("auto");
-    const [recruitmentProcess, setRecruitmentProcess] = useState("");
-    const [profileRequirements, setProfileRequirements] = useState<string[]>([]);
-    const [companySummary, setCompanySummary] = useState("");
+    const [analysis, setAnalysis] = useState<JobAnalysisResult | null>(null);
+    const [gap, setGap] = useState<GapState>({ status: "idle", text: "" });
 
-
+    const runGap = async () => {
+        setGap({ status: "loading", text: "" });
+        try {
+            const text = await analyzeGap(jobDescription, aiProvider);
+            setGap({ status: "done", text });
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : "";
+            setGap({
+                status: "error",
+                text: "",
+                error: /cv/i.test(msg)
+                    ? "Aucun CV trouvé. Ajoutez-le dans vos paramètres pour obtenir l'analyse."
+                    : "L'analyse d'adéquation a échoué. Réessayez.",
+            });
+        }
+    };
 
     const handleAnalyze = async () => {
-        if (!jobDescription.trim()) {
-            return;
-        }
+        if (!jobDescription.trim()) return;
         setIsAnalyzing(true);
+        setAnalyzeError("");
+        setGap({ status: "idle", text: "" });
         try {
             const result = await analyzeJobDescription(jobDescription, aiProvider);
-            setAnalysisResult(result);
-            setRecruitmentProcess(result.recruitment_process || "");
-            setProfileRequirements(result.profile_requirements || []);
-            setCompanySummary(result.company_summary || "");
-            // Auto-generate gap analysis right after job analysis
-            const analysis = await analyzeGap(jobDescription, aiProvider);
-            setGapAnalysis(analysis);
+            setAnalysis(result);
+            // Gap analysis runs on its own so the offer details show up right away.
+            runGap();
         } catch (error) {
             console.error("Analysis failed", error);
-            alert("Failed to analyze job description. Please try again.");
+            setAnalyzeError("L'analyse de l'offre a échoué. Vérifiez votre clé API et réessayez.");
         } finally {
             setIsAnalyzing(false);
         }
     };
 
-    const handleGapAnalysis = async () => {
-        if (!jobDescription) return;
-        setIsAnalyzingGap(true);
-        try {
-            const analysis = await analyzeGap(jobDescription, aiProvider);
-            setGapAnalysis(analysis);
-        } catch (error) {
-            console.error("Gap analysis failed", error);
-            alert("Erreur: Vérifiez que votre CV est bien enregistré dans les Paramètres.");
-        } finally {
-            setIsAnalyzingGap(false);
-        }
-    };
-
     const handleSave = async () => {
-        if (!analysisResult) return;
+        if (!analysis) return;
         setIsSaving(true);
         try {
             const draft: ApplicationDraft = {
-                company_name: analysisResult.company_name,
-                role: analysisResult.role,
-                location: analysisResult.location,
+                company_name: analysis.company_name,
+                role: analysis.role,
+                location: analysis.location,
                 status: "En attente",
                 job_description: jobDescription,
-                missions: analysisResult.missions,
-                insights: analysisResult.insights,
-                gap_analysis: gapAnalysis,
+                missions: analysis.missions,
+                insights: analysis.insights,
+                gap_analysis: gap.text,
                 cover_letter: "",
                 job_url: jobUrl,
-                tech_stack: analysisResult.tech_stack,
-                daily_tasks_forecast: analysisResult.daily_tasks_forecast,
-                recruitment_process: recruitmentProcess || analysisResult.recruitment_process,
-                profile_requirements: profileRequirements.length ? profileRequirements : analysisResult.profile_requirements,
-                company_summary: companySummary || analysisResult.company_summary,
+                tech_stack: analysis.tech_stack,
+                daily_tasks_forecast: analysis.daily_tasks_forecast,
+                recruitment_process: analysis.recruitment_process,
+                profile_requirements: analysis.profile_requirements,
+                company_summary: analysis.company_summary,
                 cover_letter_context: "",
             };
-
             await createApplication(draft);
             router.push("/");
             router.refresh();
         } catch (error) {
             console.error("Save failed", error);
-            alert("Failed to save application.");
-        } finally {
+            alert("Impossible d'enregistrer la candidature.");
             setIsSaving(false);
         }
     };
 
     return (
-        <div className="p-8 max-w-7xl mx-auto min-h-screen">
-            <div className="mb-6">
-                <Link href="/" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-4">
-                    <ArrowLeft size={16} /> Retour au Dashboard
-                </Link>
-                <h1 className="text-3xl font-bold tracking-tight">Nouvelle Candidature</h1>
+        <div className="min-h-screen">
+            <div className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
+                <div className="max-w-7xl mx-auto px-6 md:px-8 h-14 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <Link href="/" className="p-1.5 -ml-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Retour">
+                            <ArrowLeft size={18} />
+                        </Link>
+                        <h1 className="font-semibold tracking-tight truncate">Nouvelle candidature</h1>
+                    </div>
+                    <Button
+                        size="sm"
+                        className="gap-1.5 rounded-lg"
+                        onClick={handleSave}
+                        disabled={!analysis || isSaving}
+                    >
+                        {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                        Enregistrer
+                    </Button>
+                </div>
             </div>
 
-            <div className="grid gap-8 lg:grid-cols-12">
-                {/* Left Column: Job Description & CV Input (4 cols) */}
-                <div className="lg:col-span-4 space-y-4">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>1. Offre de Stage</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
+            <div className="max-w-7xl mx-auto px-6 md:px-8 py-8 grid gap-5 lg:grid-cols-3 items-start">
+                {/* 1 — Offer input */}
+                <Panel step={1} title="L'offre" icon={FileSearch}>
+                    <div className="space-y-3">
+                        <div className="relative">
+                            <Link2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                             <input
-                                className="w-full p-2 rounded border text-sm mb-2"
-                                placeholder="Lien vers l&apos;offre (URL)"
+                                className="w-full h-9 pl-9 pr-3 rounded-lg border border-input bg-card text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
+                                placeholder="Lien vers l'offre (optionnel)"
                                 value={jobUrl}
                                 onChange={(e) => setJobUrl(e.target.value)}
                             />
-                            <textarea
-                                className="w-full h-64 p-3 rounded-md border text-sm resize-none focus:outline-none focus:ring-2 focus:ring-black mb-4"
-                                placeholder="Collez ici la description du poste..."
-                                value={jobDescription}
-                                onChange={(e) => setJobDescription(e.target.value)}
-                            />
-                            <div className="flex flex-col gap-2 text-xs mb-2">
-                                <label className="font-semibold text-muted-foreground uppercase">Modèle IA</label>
-                                <select
-                                    className="border rounded p-2 text-sm"
-                                    value={aiProvider}
-                                    onChange={(e) => setAiProvider(e.target.value as "auto" | "gemini" | "openai")}
-                                >
-                                    <option value="auto">Auto (Gemini puis OpenAI)</option>
-                                    <option value="gemini">Gemini uniquement</option>
-                                    <option value="openai">OpenAI uniquement</option>
-                                </select>
-                            </div>
+                        </div>
+                        <textarea
+                            className="w-full h-72 p-3 rounded-lg border border-input bg-card text-sm leading-relaxed resize-none placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
+                            placeholder="Collez ici la description du poste…"
+                            value={jobDescription}
+                            onChange={(e) => setJobDescription(e.target.value)}
+                        />
+                        <div className="flex gap-2">
+                            <select
+                                className="h-10 rounded-lg border border-input bg-card px-2 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
+                                value={aiProvider}
+                                onChange={(e) => setAiProvider(e.target.value as Provider)}
+                                title="Modèle IA"
+                            >
+                                <option value="auto">IA : Auto</option>
+                                <option value="gemini">Gemini</option>
+                                <option value="openai">OpenAI</option>
+                            </select>
                             <Button
                                 onClick={handleAnalyze}
                                 disabled={isAnalyzing || !jobDescription.trim()}
-                                className="w-full gap-2 mb-6"
+                                className="flex-1 gap-2 rounded-lg"
                             >
                                 {isAnalyzing ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
-                                Analyser l&apos;offre
+                                {isAnalyzing ? "Analyse en cours…" : analysis ? "Relancer l'analyse" : "Analyser l'offre"}
                             </Button>
+                        </div>
+                        {analyzeError && <p className="text-xs text-destructive">{analyzeError}</p>}
+                        <p className="text-xs text-muted-foreground">
+                            L&apos;adéquation est calculée avec le CV de vos{" "}
+                            <Link href="/settings" className="underline underline-offset-2 hover:text-foreground">paramètres</Link>.
+                        </p>
+                    </div>
+                </Panel>
 
-                            <div className="text-xs text-muted-foreground p-3 bg-gray-50 rounded border">
-                                <p>ℹ️ L&apos;analyse et la génération utilisent votre CV enregistré dans les <strong>Paramètres</strong>.</p>
-                                <Link href="/settings" className="text-blue-600 hover:underline mt-1 block">
-                                    Vérifier mon profil →
-                                </Link>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
+                {/* 2 — Offer summary */}
+                <Panel step={2} title="En bref" icon={Target} muted={!analysis && !isAnalyzing}>
+                    {isAnalyzing ? (
+                        <Skeleton />
+                    ) : !analysis ? (
+                        <Placeholder text="Les informations clés de l'offre apparaîtront ici." />
+                    ) : (
+                        <OfferSummary analysis={analysis} onChange={setAnalysis} />
+                    )}
+                </Panel>
 
-                {/* Middle Column: Analysis Result (4 cols) */}
-                <div className="lg:col-span-4 space-y-4">
-                    <Card className={`h-full transition-all duration-300 ${!analysisResult ? 'opacity-50' : ''}`}>
-                        <CardHeader>
-                            <CardTitle>3. Détails Clés</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {!analysisResult ? (
-                                <div className="text-sm text-muted-foreground italic">En attente d&apos;analyse de l&apos;offre...</div>
-                            ) : (
-                                <>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase">Entreprise</label>
-                                        <input
-                                            className="w-full p-2 rounded border text-sm font-medium"
-                                            value={analysisResult.company_name}
-                                            onChange={(e) => setAnalysisResult({ ...analysisResult, company_name: e.target.value })}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase">Poste</label>
-                                        <input
-                                            className="w-full p-2 rounded border text-sm font-medium"
-                                            value={analysisResult.role}
-                                            onChange={(e) => setAnalysisResult({ ...analysisResult, role: e.target.value })}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase">Localisation</label>
-                                        <input
-                                            className="w-full p-2 rounded border text-sm"
-                                            value={analysisResult.location}
-                                            onChange={(e) => setAnalysisResult({ ...analysisResult, location: e.target.value })}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase">Tech Stack</label>
-                                        <div className="flex flex-wrap gap-1">
-                                            {analysisResult.tech_stack?.map((tech, i) => (
-                                                <span key={i} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                                                    {tech}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase">Missions</label>
-                                        <ul className="list-disc pl-5 text-xs space-y-1 text-gray-700">
-                                            {analysisResult.missions.map((m, i) => <li key={i}>{m}</li>)}
-                                        </ul>
-                                    </div>
-                                    {analysisResult.profile_requirements?.length > 0 && (
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-semibold text-muted-foreground uppercase">Profil recherché</label>
-                                            <ul className="list-disc pl-5 text-xs space-y-1 text-gray-700">
-                                                {analysisResult.profile_requirements.map((m, i) => <li key={i}>{m}</li>)}
-                                            </ul>
-                                        </div>
-                                    )}
-                                    {analysisResult.recruitment_process && (
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-semibold text-muted-foreground uppercase">Processus de recrutement</label>
-                                            <div className="text-xs bg-gray-50 border border-gray-100 p-3 rounded whitespace-pre-line leading-relaxed">
-                                                {analysisResult.recruitment_process}
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase">Tâches probables</label>
-                                        <div className="text-xs bg-amber-50 border border-amber-100 p-3 rounded whitespace-pre-line leading-relaxed">
-                                            {analysisResult.daily_tasks_forecast}
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase text-purple-600">Culture</label>
-                                        <p className="text-xs text-gray-700 italic border-l-2 border-purple-200 pl-2">{analysisResult.insights}</p>
-                                    </div>
-                                </>
-                            )}
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Right Column: Generation & Gap Analysis (4 cols) */}
-                <div className="lg:col-span-4 space-y-4">
-                    <Card className="h-full flex flex-col">
-                        <CardHeader>
-                            <CardTitle>4. IA & Génération</CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex-1 space-y-6">
-                            {!analysisResult ? (
-                                <p className="text-sm text-muted-foreground italic">Commencez par analyser l&apos;offre.</p>
-                            ) : (
-                                <>
-                                    {/* Action Buttons */}
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <Button
-                                            onClick={handleGapAnalysis}
-                                            disabled={isAnalyzingGap}
-                                            variant="secondary"
-                                            className="w-full gap-2 text-xs"
-                                        >
-                                            {isAnalyzingGap ? <Loader2 className="animate-spin" size={14} /> : <FileText size={14} />}
-                                            Analyser Gaps
-                                        </Button>
-                                    </div>
-
-                                    {!analysisResult && <p className="text-xs text-red-400">Analysez l&apos;offre d&apos;abord.</p>}
-
-                                    {/* Gap Analysis Result */}
-                                    {gapAnalysis && (
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-muted-foreground uppercase">Analyse des Écarts</label>
-                                            <textarea
-                                                className="w-full h-32 p-3 rounded-md border text-xs resize-none bg-gray-50 focus:outline-none"
-                                                value={gapAnalysis}
-                                                onChange={(e) => setGapAnalysis(e.target.value)}
-                                            />
-                                        </div>
-                                    )}
-
-                                    {/* Editable fields for additional data */}
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase">Processus de recrutement</label>
-                                        <textarea
-                                            className="w-full p-3 rounded-md border text-xs resize-none bg-gray-50 focus:outline-none"
-                                            rows={3}
-                                            value={recruitmentProcess}
-                                            onChange={(e) => setRecruitmentProcess(e.target.value)}
-                                            placeholder="• Entretien RH\n• Test technique\n• Entretien manager"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-semibold text-muted-foreground uppercase">Profil recherché (1 item par ligne)</label>
-                                        <textarea
-                                            className="w-full p-3 rounded-md border text-xs resize-none bg-gray-50 focus:outline-none"
-                                            rows={3}
-                                            value={profileRequirements.join('\\n')}
-                                            onChange={(e) => setProfileRequirements(e.target.value.split('\\n').map(s => s.trim()).filter(Boolean))}
-                                            placeholder="Must: Typescript confirmé\nMust: React\nNice: CI/CD"
-                                        />
-                                    </div>
-
-                                    <div className="pt-4 mt-auto border-t">
-                                        <Button onClick={handleSave} disabled={isSaving} className="w-full gap-2">
-                                            {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                                            Sauvegarder la Candidature
-                                        </Button>
-                                    </div>
-                                </>
-                            )}
-                        </CardContent>
-                    </Card>
-                </div>
-
+                {/* 3 — Fit with CV */}
+                <Panel
+                    step={3}
+                    title="Mon adéquation"
+                    icon={UserRound}
+                    muted={!analysis && !isAnalyzing}
+                    action={
+                        analysis && gap.status !== "loading" ? (
+                            <button
+                                onClick={runGap}
+                                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                                title="Relancer l'analyse d'adéquation"
+                            >
+                                <RefreshCw size={15} />
+                            </button>
+                        ) : null
+                    }
+                >
+                    {isAnalyzing || gap.status === "loading" ? (
+                        <Skeleton withScore />
+                    ) : !analysis ? (
+                        <Placeholder text="Votre score et vos points forts par rapport à l'offre apparaîtront ici." />
+                    ) : gap.status === "error" ? (
+                        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900">
+                            <p>{gap.error}</p>
+                            <Link href="/settings" className="inline-flex items-center gap-1 mt-2 text-xs font-medium hover:underline">
+                                Ouvrir les paramètres <ChevronRight size={13} />
+                            </Link>
+                        </div>
+                    ) : gap.status === "done" ? (
+                        <FitAnalysis markdown={gap.text} insights={analysis.insights} />
+                    ) : null}
+                </Panel>
             </div>
+        </div>
+    );
+}
+
+/* ---------- Layout pieces ---------- */
+
+function Panel({
+    step, title, icon: Icon, children, muted, action,
+}: {
+    step: number;
+    title: string;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    children: React.ReactNode;
+    muted?: boolean;
+    action?: React.ReactNode;
+}) {
+    return (
+        <section className={`rounded-xl border bg-card p-5 transition-opacity ${muted ? "opacity-60" : ""}`}>
+            <header className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2.5">
+                    <span className="grid place-items-center h-6 w-6 rounded-md bg-muted text-xs font-semibold text-muted-foreground tabular-nums">
+                        {step}
+                    </span>
+                    <h2 className="font-semibold tracking-tight flex items-center gap-2">
+                        {title}
+                    </h2>
+                    <Icon size={15} className="text-muted-foreground" />
+                </div>
+                {action}
+            </header>
+            {children}
+        </section>
+    );
+}
+
+function Placeholder({ text }: { text: string }) {
+    return (
+        <div className="rounded-lg border border-dashed py-12 px-6 text-center text-sm text-muted-foreground">
+            {text}
+        </div>
+    );
+}
+
+function Skeleton({ withScore }: { withScore?: boolean }) {
+    return (
+        <div className="space-y-4 animate-pulse">
+            {withScore ? (
+                <div className="flex items-center gap-4">
+                    <div className="h-16 w-16 rounded-full bg-muted" />
+                    <div className="flex-1 space-y-2">
+                        <div className="h-3 w-1/2 rounded bg-muted" />
+                        <div className="h-3 w-3/4 rounded bg-muted" />
+                    </div>
+                </div>
+            ) : (
+                <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-muted" />
+                    <div className="flex-1 space-y-2">
+                        <div className="h-3.5 w-3/4 rounded bg-muted" />
+                        <div className="h-3 w-1/3 rounded bg-muted" />
+                    </div>
+                </div>
+            )}
+            {[0.9, 0.75, 0.85, 0.6, 0.8].map((w, i) => (
+                <div key={i} className="h-3 rounded bg-muted" style={{ width: `${w * 100}%` }} />
+            ))}
+        </div>
+    );
+}
+
+/* ---------- Column 2: offer summary ---------- */
+
+function OfferSummary({
+    analysis, onChange,
+}: {
+    analysis: JobAnalysisResult;
+    onChange: (a: JobAnalysisResult) => void;
+}) {
+    const inline =
+        "w-full bg-transparent rounded-md px-1.5 -mx-1.5 py-0.5 border border-transparent hover:border-input focus:border-input focus:outline-none focus:bg-background transition-colors";
+
+    return (
+        <div className="space-y-5">
+            {/* Identity — click any field to edit */}
+            <div className="flex items-start gap-3">
+                <CompanyAvatar name={analysis.company_name} />
+                <div className="min-w-0 flex-1">
+                    <input
+                        className={`${inline} font-semibold leading-snug`}
+                        value={analysis.role}
+                        onChange={(e) => onChange({ ...analysis, role: e.target.value })}
+                        aria-label="Poste"
+                    />
+                    <input
+                        className={`${inline} text-sm text-muted-foreground`}
+                        value={analysis.company_name}
+                        onChange={(e) => onChange({ ...analysis, company_name: e.target.value })}
+                        aria-label="Entreprise"
+                    />
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <MapPin size={12} className="shrink-0" />
+                        <input
+                            className={`${inline} text-xs`}
+                            value={analysis.location}
+                            onChange={(e) => onChange({ ...analysis, location: e.target.value })}
+                            aria-label="Localisation"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {analysis.company_summary && (
+                <p className="text-sm text-muted-foreground leading-relaxed">{analysis.company_summary}</p>
+            )}
+
+            <TechTags items={analysis.tech_stack} />
+            <BulletList title="Missions" items={analysis.missions} />
+            <RequirementList items={analysis.profile_requirements} />
+            <ProcessSteps text={analysis.recruitment_process} />
+        </div>
+    );
+}
+
+/* ---------- Column 3: fit with CV ---------- */
+
+function FitAnalysis({ markdown, insights }: { markdown: string; insights?: string }) {
+    const parsed = useMemo(() => parseGapAnalysis(markdown), [markdown]);
+    const unparsed = parsed.score === null && !parsed.strengths.length && !parsed.gaps.length;
+
+    if (unparsed) {
+        return <p className="text-sm whitespace-pre-line leading-relaxed">{markdown}</p>;
+    }
+
+    return (
+        <div className="space-y-5">
+            {parsed.score !== null && <ScoreSummary score={parsed.score} />}
+            <PointList title="Points forts" points={parsed.strengths} tone="good" />
+            <PointList title="À travailler" points={parsed.gaps} tone="warn" />
+            <InsightNotes insights={insights} />
         </div>
     );
 }

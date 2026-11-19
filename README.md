@@ -1,4 +1,4 @@
-# Intelligent Internship Manager — AI Job Application Prototype
+# Candid — AI Job Application Tracker
 
 A job-application management prototype combining a dashboard with LLM-assisted job-description analysis and CV matching.
 
